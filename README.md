@@ -4,8 +4,8 @@ Costruiamo passo dopo passo un agente AI: partiamo da una semplice chiamata a un
 modello e arriviamo a un agente in grado di usare strumenti esterni. Al termine
 sarai in grado di leggere e capire tutti i file di questo repo.
 
-Per eseguire gli esempi, crea un file `.env` con `CLAUDE_API_KEY=<tua chiave>` e
-lancia `node --env-file=.env examples.js`.
+Per eseguire gli esempi, crea un file `.env` con `CLAUDE_API_KEY=<tua chiave>` (vedi `.env.example`) e
+lancia `pnpm run base`.
 
 ---
 

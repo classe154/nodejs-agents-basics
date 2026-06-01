@@ -5,7 +5,14 @@ Durata stimata: 1 ora (~20 minuti per pattern).
 Questa lezione assume che tu sappia già cos'è un agente e un tool con LangChain
 (vedi il `README.md` nella root). Qui esploriamo come far lavorare più agenti insieme.
 
-Per eseguire gli esempi: `node --env-file=.env patterns.js`
+Ogni pattern ha il suo script nel `package.json`:
+
+```
+pnpm run pattern-supervisor
+pnpm run pattern-parallel
+pnpm run pattern-reflection
+```
+
 Il file `.env` deve contenere `CLAUDE_API_KEY=<tua chiave>` (vedi `.env.example`).
 
 ---
@@ -143,49 +150,52 @@ flowchart TD
 ```
 
 ```js
-const critico = createAgent({
-    model,
-    systemPrompt: `Valuta le descrizioni prodotto.
-Approva solo se sono persuasive, complete e senza errori.`,
-    tools: [],
-    responseFormat: z.object({
-        approvato: z.boolean().describe("true se pronta, false se va migliorata"),
-        feedback: z.string().describe("Suggerimenti per migliorare (vuoto se approvato)"),
-    }),
-});
+// Lo stato viene passato da un .then() al successivo: { bozza, terminato }
+let catena = Promise.resolve({ bozza: "", terminato: false });
 
-function eseguiLoop(bozza, iterazione) {
-    if (iterazione > maxIterazioni) {
-        console.log("Limite raggiunto. Versione finale:\n", bozza);
-        return Promise.resolve();
-    }
+for (let i = 1; i <= maxIterazioni; i++) {
+    const iterazione = i;
 
-    let nuovaBozza;
+    catena = catena.then(stato => {
+        if (stato.terminato) return stato;  // cortocircuito: salta le iterazioni restanti
 
-    return esecutore.invoke({ messages: [new HumanMessage(prompt)] })
-        .then(risposta => {
-            nuovaBozza = risposta.messages.at(-1).content;
-            return critico.invoke({ messages: [new HumanMessage(`Valuta:\n${nuovaBozza}`)] });
-        })
-        .then(valutazione => {
-            const { approvato, feedback } = valutazione.structuredResponse;
-            if (approvato) {
-                console.log("Approvata!\n", nuovaBozza);
-                return Promise.resolve();
-            }
-            return eseguiLoop(`${nuovaBozza}\n\nFeedback: ${feedback}`, iterazione + 1);
-        });
+        const prompt = stato.bozza === ""
+            ? `Scrivi una descrizione per: "${prodotto}"`
+            : `Migliora tenendo conto del feedback:\n${stato.bozza}`;
+
+        let nuovaBozza;
+
+        return esecutore.invoke({ messages: [new HumanMessage(prompt)] })
+            .then(risposta => {
+                nuovaBozza = risposta.messages.at(-1).content;
+                return critico.invoke({ messages: [new HumanMessage(`Valuta:\n${nuovaBozza}`)] });
+            })
+            .then(valutazione => {
+                const { approvato, feedback } = valutazione.structuredResponse;
+                if (approvato) {
+                    console.log("Approvata!\n", nuovaBozza);
+                    return { bozza: nuovaBozza, terminato: true };
+                }
+                return { bozza: `${nuovaBozza}\n\nFeedback: ${feedback}`, terminato: false };
+            });
+    });
 }
+
+catena
+    .then(stato => {
+        if (!stato.terminato) console.log("Limite raggiunto. Versione finale:\n", stato.bozza);
+    })
+    .catch(err => console.error(err));
 ```
 
-Il loop usa la ricorsione: `eseguiLoop` richiama se stessa con i dati aggiornati.
-La variabile `nuovaBozza` è dichiarata fuori dai `.then()` per essere visibile
-a entrambi i blocchi dello stesso ciclo — altrimenti il secondo `.then()` non
-potrebbe accedere alla bozza prodotta dal primo.
+Il `for` costruisce l'intera catena di Promise prima che l'esecuzione inizi: tutti i
+`.then()` vengono registrati subito. A runtime, ogni passo riceve lo `stato` del passo
+precedente: se `terminato` è già `true`, restituisce lo stato invariato e salta il lavoro.
+`nuovaBozza` è dichiarata fuori dai `.then()` annidati per essere visibile a entrambi.
 
 **Punto chiave:** il Critico non riscrive, valuta e suggerisce. È l'Esecutore che
-migliora a ogni ciclo. `maxIterazioni` è obbligatorio: senza, il loop potrebbe
-non terminare mai se il Critico è troppo esigente.
+migliora a ogni ciclo. `maxIterazioni` è obbligatorio: definisce quanti `.then()` vengono
+costruiti — senza, il loop non avrebbe mai fine.
 
 ---
 

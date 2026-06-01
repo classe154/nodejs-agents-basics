@@ -4,7 +4,10 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "start": "node --env-file=.env main.js"
+    "base": "node --env-file=.env base.js",
+    "pattern-supervisor": "node --env-file=.env pattern-supervisor.js",
+    "pattern-parallel": "node --env-file=.env pattern-parallel.js",
+    "pattern-reflection": "node --env-file=.env pattern-reflection.js"
   },
   "keywords": [],
   "author": "",
