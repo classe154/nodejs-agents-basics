@@ -150,52 +150,60 @@ flowchart TD
 ```
 
 ```js
-// Lo stato viene passato da un .then() al successivo: { bozza, terminato }
-let catena = Promise.resolve({ bozza: "", terminato: false });
+const maxIterazioni = 3;
 
-for (let i = 1; i <= maxIterazioni; i++) {
-    const iterazione = i;
+// Gestisce un singolo ciclo esecutore→critico e si richiama ricorsivamente se necessario
+// bozza: testo dell'ultima versione; feedback: suggerimenti dell'iterazione precedente
+function eseguiCiclo(prodotto, iterazione = maxIterazioni, bozza = "", feedback = "") {
+    if (iterazione === 0) {
+        console.log(`*** Limite di ${maxIterazioni} iterazioni raggiunto.`);
+        return Promise.resolve(bozza);
+    }
 
-    catena = catena.then(stato => {
-        if (stato.terminato) return stato;  // cortocircuito: salta le iterazioni restanti
+    const prompt = bozza === ""
+        ? `Scrivi una descrizione per questo prodotto: "${prodotto}"`
+        : `Riscrivi e migliora questa descrizione tenendo conto del feedback ricevuto:\n${bozza}\n\nFeedback: ${feedback}`;
 
-        const prompt = stato.bozza === ""
-            ? `Scrivi una descrizione per: "${prodotto}"`
-            : `Migliora tenendo conto del feedback:\n${stato.bozza}`;
+    let nuovaBozza;
 
-        let nuovaBozza;
-
-        return esecutore.invoke({ messages: [new HumanMessage(prompt)] })
-            .then(risposta => {
-                nuovaBozza = risposta.messages.at(-1).content;
-                return critico.invoke({ messages: [new HumanMessage(`Valuta:\n${nuovaBozza}`)] });
-            })
-            .then(valutazione => {
-                const { approvato, feedback } = valutazione.structuredResponse;
-                if (approvato) {
-                    console.log("Approvata!\n", nuovaBozza);
-                    return { bozza: nuovaBozza, terminato: true };
-                }
-                return { bozza: `${nuovaBozza}\n\nFeedback: ${feedback}`, terminato: false };
-            });
-    });
+    return esecutore.invoke({ messages: [new HumanMessage(prompt)] })
+        .then(risposta => {
+            nuovaBozza = risposta.messages.at(-1).content;
+            const iterazioneCorrente = maxIterazioni - iterazione + 1;
+            console.log(`Iterazione ${iterazioneCorrente} — Bozza:\n${nuovaBozza}`);
+            return critico.invoke({ messages: [new HumanMessage(`Valuta questa descrizione:\n${nuovaBozza}`)] });
+        })
+        .then(valutazione => {
+            const { approvato, feedback: nuovoFeedback } = valutazione.structuredResponse;
+            if (approvato) {
+                console.log("Descrizione approvata!");
+                return nuovaBozza;
+            }
+            console.log(`Feedback del critico: ${nuovoFeedback}`);
+            // chiamata ricorsiva: passa bozza e feedback come argomenti separati
+            return eseguiCiclo(prodotto, iterazione - 1, nuovaBozza, nuovoFeedback);
+        });
 }
 
-catena
-    .then(stato => {
-        if (!stato.terminato) console.log("Limite raggiunto. Versione finale:\n", stato.bozza);
-    })
-    .catch(err => console.error(err));
+function patternReflection(prodotto) {
+    eseguiCiclo(prodotto)
+        .then(versioneFinale => console.log(`Versione finale:\n${versioneFinale}`))
+        .catch(err => console.error(err));
+}
 ```
 
-Il `for` costruisce l'intera catena di Promise prima che l'esecuzione inizi: tutti i
-`.then()` vengono registrati subito. A runtime, ogni passo riceve lo `stato` del passo
-precedente: se `terminato` è già `true`, restituisce lo stato invariato e salta il lavoro.
-`nuovaBozza` è dichiarata fuori dai `.then()` annidati per essere visibile a entrambi.
+La logica è divisa in due funzioni: `eseguiCiclo` gestisce un singolo ciclo e si richiama
+ricorsivamente; `patternReflection` è il punto d'ingresso che stampa il risultato finale.
+Il contatore `iterazione` parte da `maxIterazioni` e scende a zero (conto alla rovescia):
+`iterazioneCorrente` converte il valore in un numero crescente per il log.
+`bozza` e `feedback` viaggiano come argomenti separati, così `Promise.resolve(bozza)`
+al limite restituisce sempre la bozza pulita, senza il testo del feedback concatenato.
+`feedback: nuovoFeedback` rinomina la proprietà in destructuring per evitare conflitti
+con il parametro `feedback` della funzione.
 
 **Punto chiave:** il Critico non riscrive, valuta e suggerisce. È l'Esecutore che
-migliora a ogni ciclo. `maxIterazioni` è obbligatorio: definisce quanti `.then()` vengono
-costruiti — senza, il loop non avrebbe mai fine.
+migliora a ogni ciclo. `maxIterazioni` è obbligatorio: senza, la ricorsione non avrebbe
+mai un caso base e il programma andrebbe in loop infinito.
 
 ---
 
