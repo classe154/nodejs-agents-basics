@@ -51,18 +51,18 @@ Feedback: ${feedback}`;
         .then(risposta => {
             nuovaBozza = risposta.messages.at(-1).content;
             const iterazioneCorrente = maxIterazioni - iterazione + 1;
-            console.log(`🚀 Iterazione ${iterazioneCorrente} — Bozza:\n${nuovaBozza}`);
+            console.log(`Iterazione ${iterazioneCorrente} — Bozza:\n${nuovaBozza}`);
             return critico.invoke({ messages: [new HumanMessage(`Valuta questa descrizione:\n${nuovaBozza}`)] });
         })
         .then(valutazione => {
             const { approvato, feedback: nuovoFeedback } = valutazione.structuredResponse;
 
             if (approvato) {
-                console.log(`👍️ Descrizione approvata!`);
+                console.log("Descrizione approvata!");
                 return nuovaBozza;
             }
 
-            console.log(`❌ Feedback del critico: ${nuovoFeedback}`);
+            console.log(`Feedback del critico: ${nuovoFeedback}`);
             // chiamata ricorsiva: passa bozza e feedback come argomenti separati
             return eseguiCiclo(prodotto, iterazione - 1, nuovaBozza, nuovoFeedback);
         });
@@ -70,7 +70,7 @@ Feedback: ${feedback}`;
 
 function patternReflection(prodotto) {
     console.log("\n=== Pattern 3: Reflection ===");
-    eseguiCiclo(prodotto, 3)
+    eseguiCiclo(prodotto)
         .then((versioneFinale) => {
             console.log(`Versione finale:\n${versioneFinale}`);
         })
